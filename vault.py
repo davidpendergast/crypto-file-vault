@@ -109,6 +109,8 @@ def do_encryption(targets, password):
     removed_files = []
     unaffected_files = []
     
+    filenames = _get_unique_filenames(len(targets), '.json', OUTPUT_DIRECTORY)
+    
     for target in targets:
         if is_encrypted(target):
             print('Skipping already encrypted file: %s' % target)
@@ -128,9 +130,10 @@ def do_encryption(targets, password):
                         'pw_hash':password_hash,
                         'crypto_data':crypto_data
                     }
-                    #TODO make this safe
-                    filename = 'secret'+str(random.randint(0, 999999999))+'.json'
+                    
+                    filename = filenames.pop()
                     full_name = os.path.join(OUTPUT_DIRECTORY, filename)
+                    
                     with open(full_name, 'w') as out_file:
                         json.dump(actual_json, out_file, indent=4)
                     created_files.append(full_name)
@@ -143,6 +146,17 @@ def do_encryption(targets, password):
                 unaffected_files.append(target)
                 
     _display_summary(created_files, removed_files, unaffected_files)
+
+def _get_unique_filenames(n, filetype, for_directory):
+    dir_files = set(os.listdir(for_directory))
+    filenames = []
+    while len(filenames) < n:
+        rand_num = random.randint(0, 1000000000)
+        hex_str = hex(rand_num)
+        name = hex_str[2:] + filetype
+        if name not in dir_files:
+            filenames.append(name)
+    return filenames
 
 def _make_dir_if_necessary(directory_name):
     if not os.path.exists(directory_name):
