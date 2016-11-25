@@ -22,14 +22,13 @@ import base64
 """if true, exceptions are raised on failure instead of exiting."""
 TESTING_MODE = False
 
-HELP_FLAG = '--help'
-
 DATA_FILENAME = 'vaultdata.json'
 OUTPUT_DIRECTORY = 'secret_files'
 INPUT_DIRECTORY = 'plain_files'
     
+    
 def encrypt():
-    """encryption command sequence"""
+    """launches encryption sequence"""
     _verify_initted()
     targets = _get_targets_for_encryption()
     _ask_for_user_confirm_on_targets(targets, 'encrypt')
@@ -37,8 +36,9 @@ def encrypt():
     
     do_encryption(targets, password)
     
+    
 def decrypt():
-    """decryption command sequence"""
+    """launches decryption sequence"""
     _verify_initted()
     targets = _get_targets_for_decryption()
     _ask_for_user_confirm_on_targets(targets, 'decrypt')
@@ -46,8 +46,9 @@ def decrypt():
     
     do_decryption(targets, password)
     
+    
 def status():
-    """status command sequence"""
+    """displays current status"""
     encrypt_targets = _get_targets_for_encryption()
     decrypt_targets = _get_targets_for_decryption()
      
@@ -59,8 +60,9 @@ def status():
     if len(decrypt_targets) > 0:
         print('\n'.join(['\t' + x for x in decrypt_targets]))
     
+    
 def init():
-    """init command sequence"""
+    """launches initialization sequence"""
     if _is_initted():
         _fail('vault is already initialized in this directory.')
     
@@ -89,15 +91,16 @@ def init():
     
     print('Vault successfully initialized.')
      
+     
 def help():
     """--help command sequence"""
     text = [
         'usage: vault.py [option]',
         'Options corresponding to Vault functions:',
-        'init    : Initialize a new Vault password and ',
+        'init    : Initialize a new password and input/output directories',
         'encrypt : Encrypt the contents of plain_files',
         'decrypt : Decrypt the contents of secret_files',
-        'status  : Display lists of currently encrypted and non-encrypted files',
+        'status  : Display lists of encrypted and non-encrypted files',
         '--help  : Show this info'
     ]
     
@@ -105,6 +108,7 @@ def help():
     
     
 def do_encryption(targets, password):
+    """encrypts a list of filenames using a password"""
     password_hash = _hash(password)
     _make_dir_if_necessary(OUTPUT_DIRECTORY)
     created_files = []
@@ -152,23 +156,10 @@ def do_encryption(targets, password):
                 unaffected_files.append(target)
                 
     _display_summary(created_files, removed_files, unaffected_files)
-
-def _get_unique_filenames(n, filetype, for_directory):
-    dir_files = set(os.listdir(for_directory))
-    filenames = []
-    while len(filenames) < n:
-        rand_num = random.randint(0, 1000000000)
-        hex_str = hex(rand_num)
-        name = hex_str[2:] + filetype
-        if name not in dir_files:
-            filenames.append(name)
-    return filenames
-
-def _make_dir_if_necessary(directory_name):
-    if not os.path.exists(directory_name):
-        os.makedirs(directory_name)
+    
     
 def do_decryption(targets, password):
+    """decrypts a list of filenames using a password"""
     password_hash = _hash(password)
     created_files = []
     removed_files = []
@@ -183,7 +174,8 @@ def do_decryption(targets, password):
                 with open(target, 'r') as data_file:    
                     json_blob = json.load(data_file)
                     if password_hash != json_blob['pw_hash']:
-                        raise Exception('File encrypted with different password: %s' % target)
+                        raise Exception('File encrypted' +
+                                 ' with different password: %s' % target)
                     
                     crypto_string = json_blob['crypto_data'] 
                     crypto_bytes = bytes(crypto_string, 'utf-8')
@@ -207,6 +199,27 @@ def do_decryption(targets, password):
                 print(e)
                 unaffected_files.append(target)
     _display_summary(created_files, removed_files, unaffected_files)
+    
+    
+def _encrypt_data(raw_data, password):
+    """takes a byte array, encrypts it using a symmetric key generated
+        from the given password and returns the resultant byte array.
+    """
+    key = _password_to_key(password)
+    f = Fernet(key)
+    crypto_bytes = f.encrypt(raw_data)
+    return crypto_bytes
+     
+     
+def _decrypt_data(crypto_data, password):
+    """takes an encrypted byte array, decrypts it using a symmetric key 
+        generated from the given password and returns the resultant byte array.
+    """
+    key = _password_to_key(password)
+    f = Fernet(key)
+    token = f.decrypt(crypto_data)
+    return token
+
 
 def _display_summary(created_files, removed_files, unaffected_files):
     print('\nCreated %d files:' % len(created_files))
@@ -217,17 +230,23 @@ def _display_summary(created_files, removed_files, unaffected_files):
         print('\n%d files unaffected:' % len(unaffected_files))
         print('\n'.join(['\t' + x for x in unaffected_files]))
      
-def _encrypt_data(raw_data, password):
-    key = _password_to_key(password)
-    f = Fernet(key)
-    crypto_bytes = f.encrypt(raw_data)
-    return crypto_bytes
      
-def _decrypt_data(crypto_data, password):
-    key = _password_to_key(password)
-    f = Fernet(key)
-    token = f.decrypt(crypto_data)
-    return token
+def _get_unique_filenames(n, filetype, for_directory):
+    dir_files = set(os.listdir(for_directory))
+    filenames = []
+    while len(filenames) < n:
+        rand_num = random.randint(0, 1000000000)
+        hex_str = hex(rand_num)
+        name = hex_str[2:] + filetype
+        if name not in dir_files:
+            filenames.append(name)
+    return filenames
+
+
+def _make_dir_if_necessary(directory_name):
+    if not os.path.exists(directory_name):
+        os.makedirs(directory_name)  
+    
     
 def _password_to_key(password):
     char_pool = string.ascii_uppercase + string.ascii_lowercase
@@ -238,6 +257,7 @@ def _password_to_key(password):
     key = bytes(key_str, 'utf-8')
     return key
     
+    
 def write_file(file_name, file_contents):
     try:
         dir_path = os.path.dirname(file_name)
@@ -247,6 +267,7 @@ def write_file(file_name, file_contents):
         
     with open(file_name,'wb') as f:
         f.write(file_contents)
+    
                     
 def is_encrypted(target):
     """returns true if target filename is already encrypted."""
@@ -256,20 +277,14 @@ def is_encrypted(target):
             return 'pw_hash' in data and 'crypto_data' in data
     except:
         return False
-    
-def _get_targets_for_encryption():
-    targets = _get_targets(INPUT_DIRECTORY)
-    return [x for x in targets if not is_encrypted(x)]
-    
-def _get_targets_for_decryption():
-    targets = _get_targets(OUTPUT_DIRECTORY)
-    return [x for x in targets if is_encrypted(x)]
+
     
 def _verify_initted():
     if not _is_initted():
         _fail('vault must be initialized in this directory before proceeding.' + 
                 '\n\n\tuse python vault.py init')
-    
+
+     
 def _ask_for_password():
     password = getpass.getpass()
     while True:
@@ -287,6 +302,7 @@ def _hash(pw):
     hashGen.update(pw)
     return hashGen.hexdigest()
     
+    
 def _password_matches_initialization(password):
     try:
         with open(DATA_FILENAME) as data_file:    
@@ -297,8 +313,10 @@ def _password_matches_initialization(password):
     except EnvironmentError:
         _fail('Error while accessing %d' % DATA_FILENAME)
     
+    
 def _is_initted():
      return os.path.isfile(DATA_FILENAME)
+      
             
 def _new_password_is_valid(password, password_confirm):
     if password != password_confirm:
@@ -308,6 +326,7 @@ def _new_password_is_valid(password, password_confirm):
         print('Password must not be empty!')
         return False
     return True
+    
     
 def _ask_for_user_confirm_on_targets(targets, action):
     """asks the user to user to verify targeted files are correct."""
@@ -323,11 +342,23 @@ def _ask_for_user_confirm_on_targets(targets, action):
         if answer != 'y':
             _fail('User cancelled procedure.')    
     
+    
+def _get_targets_for_encryption():
+    targets = _get_targets(INPUT_DIRECTORY)
+    return [x for x in targets if not is_encrypted(x)]
+    
+    
+def _get_targets_for_decryption():
+    targets = _get_targets(OUTPUT_DIRECTORY)
+    return [x for x in targets if is_encrypted(x)]    
+    
+    
 def _get_targets(local_path):
     if os.path.exists(local_path):
         return _get_nested_files_in_directory(local_path)  
     else:
         _fail('Cannot access %s: No such file or directory.' % local_path)
+
 
 def _get_nested_files_in_directory(rootdir):
     fileList = []
@@ -335,6 +366,7 @@ def _get_nested_files_in_directory(rootdir):
         for file in files:
             fileList.append(os.path.join(root,file))
     return fileList
+    
     
 def _fail(message):
     if TESTING_MODE:
@@ -348,7 +380,7 @@ COMMANDS = {
     'decrypt': decrypt,
     'init':    init,
     'status':  status,
-    HELP_FLAG: help
+    '--help':  help
 }
 
 if sys.version_info[0] < 3:
@@ -358,8 +390,8 @@ if __name__ == '__main__':
     args = list(sys.argv)
     if len(args) != 2:
         problem = 'Too many' if len(args) > 2 else 'Not enough'
-        _fail('%s arguments given. ' + 
-                'Use %s for more information.' % (problem, HELP_FLAG))
+        _fail(('%s arguments given. ' + 
+                'Use --help for more information.') % problem)
     
     command = args[1]
 
