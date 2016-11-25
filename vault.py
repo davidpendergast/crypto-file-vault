@@ -20,7 +20,6 @@ import random
 """if true, exceptions are raised on failure instead of exiting."""
 TESTING_MODE = False
 
-THIS_FILENAME = None
 HELP_FLAG = '--help'
 
 DATA_FILENAME = 'vaultdata.json'
@@ -90,7 +89,18 @@ def init():
      
 def help():
     """--help command sequence"""
-    print('called help')
+    text = [
+        'usage: vault.py [option]',
+        'Options corresponding to Vault functions:',
+        'init    : Initialize a new Vault password and ',
+        'encrypt : Encrypt the contents of plain_files',
+        'decrypt : Decrypt the contents of secret_files',
+        'status  : Display lists of currently encrypted and non-encrypted files',
+        '--help  : Show this info'
+    ]
+    
+    print('\n'.join(text))
+    
     
 def do_encryption(targets, password):
     password_hash = _hash(password)
@@ -308,7 +318,6 @@ if __name__ == '__main__':
         _fail('%s arguments given. ' + 
                 'Use %s for more information.' % (problem, HELP_FLAG))
     
-    THIS_FILE_NAME = args[0]
     command = args[1]
 
     if command in COMMANDS:
