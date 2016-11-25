@@ -22,8 +22,6 @@ HELP_FLAG = '--help'
 DATA_FILENAME = 'vaultdata.json'
 OUTPUT_DIRECTORY = 'secret_files'
 INPUT_DIRECTORY = 'plain_files'
-
-PROTECTED = ['.*vault\.py', '.*vaultdata\.json', '.*README.txt', '.*\.git.*']
     
 def encrypt():
     '''encryption command sequence'''
@@ -130,13 +128,7 @@ def do_encryption(targets, password):
                 print('Exception thrown while encrypting file: %s' % target)
                 unaffected_files.append(target)
                 
-    print('\nRemoved %d files:' % len(removed_files))
-    print('\n'.join(['\t' + x for x in removed_files]))
-    print('\nCreated %d files:' % len(created_files))
-    print('\n'.join(['\t' + x for x in created_files]))
-    if len(unaffected_files) > 0:
-        print('\n%d files unaffected:' % len(unaffected_files))
-        print('\n'.join(['\t' + x for x in unaffected_files]))
+    _display_summary(created_files, removed_files, unaffected_files)
 
 def _make_dir_if_necessary(directory_name):
     if not os.path.exists(directory_name):
@@ -173,7 +165,17 @@ def do_decryption(targets, password):
                 print('Exception thrown while reading file: %s' % target)
                 print(e)
                 unaffected_files.append(target)
-              
+    _display_summary(created_files, removed_files, unaffected_files)
+
+def _display_summary(created_files, removed_files, unaffected_files):
+    print('\nCreated %d files:' % len(created_files))
+    print('\n'.join(['\t' + x for x in created_files]))
+    print('\nRemoved %d files:' % len(removed_files))
+    print('\n'.join(['\t' + x for x in removed_files]))
+    if len(unaffected_files) > 0:
+        print('\n%d files unaffected:' % len(unaffected_files))
+        print('\n'.join(['\t' + x for x in unaffected_files]))
+     
 def _decrypt_data(crypto_data, password):
     # TODO - crypto_data -> json string
     json_string = crypto_data
@@ -255,7 +257,7 @@ def _new_password_is_valid(password, password_confirm):
 def _ask_for_user_confirm_on_targets(targets, action):
     """asks the user to user to verify targeted files are correct."""
     if len(targets) == 0:
-        _fail('There is nothing to encrypt/decrypt.')
+        _fail('There is nothing to %s.' % action)
     else:
         print('Targets:')
         print('\n'.join(['\t' + x for x in targets]) + '\n')
@@ -264,23 +266,13 @@ def _ask_for_user_confirm_on_targets(targets, action):
             answer = input('%s %d files? (y/n): ' % (action, len(targets)))
         
         if answer != 'y':
-            _fail('User cancelled procedure.')       
+            _fail('User cancelled procedure.')    
     
 def _get_targets(local_path):
-    '''returns a list of filenames'''
-    
-    print(local_path)
     if os.path.exists(local_path):
-        targets = _get_nested_files_in_directory(local_path)
-        return _filter_protected(targets)
+        return _get_nested_files_in_directory(local_path)  
     else:
         _fail('Cannot access %s: No such file or directory.' % local_path)
-    
-def _filter_protected(targets):
-    regex = '|'.join([x + '\Z' for x in PROTECTED])
-    pattern = re.compile(regex)
-    filtered_targets = [x for x in targets if not pattern.match(x)]
-    return filtered_targets
 
 def _get_nested_files_in_directory(rootdir):
     fileList = []
@@ -303,6 +295,9 @@ COMMANDS = {
     'status':  status,
     HELP_FLAG: help
 }
+
+if sys.version_info[0] < 3:
+    raise 'Must be using python 3'
 
 if __name__ == '__main__':
     args = list(sys.argv)
