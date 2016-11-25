@@ -1,3 +1,4 @@
+from cryptography.fernet import Fernet
 
 import sys
 import os.path
@@ -5,8 +6,9 @@ import re
 import getpass
 import hashlib
 import json
+import random
 
-# if true, exceptions are raised on failure instead of exiting.
+'''if true, exceptions are raised on failure instead of exiting.'''
 TESTING_MODE = False
 
 THIS_FILENAME = None
@@ -14,13 +16,93 @@ HELP_FLAG = '--help'
 
 DATA_FILENAME = 'vaultdata.json'
 
-PROTECTED = ['.*vault\.py', '.*vaultdata\.json', '.*\.git.*']
+PROTECTED = ['.*vault\.py', '.*vaultdata\.json', '.*README.txt', '.*\.git.*']
     
 def encrypt(args):
-    _verify_targets_and_password(args, 'encrypt')
+    targets, password = _verify_targets_and_password(args, 'encrypt')
+    do_encryption(targets, password)
+    
+def do_encryption(targets, password):
+    password_hash = _hash(password)
+    for target in targets:
+        if is_encrypted(target):
+            print('Skipping already encrypted file: %s' % target)
+        else:
+            try:
+                with open(target, 'rb') as data_file:
+                    raw_data = data_file.read()
+                    as_ints = [int(x) for x in raw_data]
+                    json_blob = {
+                        'file_name':target,
+                        'file_contents':as_ints
+                    }
+                    crypto_data = _encrypt_data(json_blob, password)
+                    actual_json = {
+                        'pw_hash':password_hash,
+                        'crypto_data':crypto_data
+                    }
+                    #TODO make this safe
+                    filename = 'secret'+str(random.randint(0,999999999))+'.json'
+                    with open(filename, 'w') as out_file:
+                        json.dump(actual_json, out_file, indent=4)
+            
+            except Exception as e:
+                print('Exception thrown while encrypting file: %s' % target)
+                raise e
 
 def decrypt(args):
-    _verify_targets_and_get_password(args, 'decrypt')
+    targets, password = _verify_targets_and_password(args, 'decrypt')
+    do_decryption(targets, password)
+    
+def do_decryption(targets, password):
+    password_hash = _hash(password)
+    for target in targets:
+        if not is_encrypted(target):
+            print('Skipping non-encrypted file: %s' % target)
+        else:
+            try:
+                with open(target, 'r') as data_file:    
+                    json_blob = json.load(data_file)
+                    if password_hash != json_blob['pw_hash']:
+                        print('File encrypted with different initialization: %s' % target)
+                    crypto_data = json_blob['crypto_data'] 
+                    print('Decrypting %s...' % target)
+                    raw_data = _decrypt_data(crypto_data, password)
+                    print(raw_data)
+                    file_name = raw_data['file_name']
+                    file_contents = raw_data['file_contents']
+                    as_bytes = bytes(file_contents)
+                    write_file(file_name, as_bytes)
+                
+                os.remove(target)
+                    
+            except Exception as e:
+                print('Exception thrown while reading file: %s' % target)
+                print(e)
+              
+def _decrypt_data(crypto_data, password):
+    # TODO - crypto_data -> json string
+    json_string = crypto_data
+    return json.loads(json_string)
+    
+def _encrypt_data(json_data, password):
+    json_string = json.dumps(json_data) 
+    # TODO - json_string -> crypto_data
+    crypto_data = json_string
+    return crypto_data
+    
+def write_file(file_name, file_contents):
+    with open(file_name,'wb') as f:
+        f.write(file_contents)
+                    
+def is_encrypted(target):
+    '''returns true if target filename is already encrypted.'''
+    try:
+        with open(target) as data_file:    
+            data = json.load(data_file)
+            return 'pw_hash' in data and 'crypto_data' in data
+    except:
+        return False
     
 def _verify_targets_and_password(args, action):
     if not _is_initted():
@@ -35,7 +117,7 @@ def _verify_targets_and_password(args, action):
         else:
             print('incorrect password.')
             password = getpass.getpass()
-            
+    return (targets, password)
     
 def _hash(pw):
     hashGen = hashlib.sha512()
@@ -119,6 +201,7 @@ def _get_targets(args):
         else:
             _fail('Cannot access %s: No such file or directory.' % args[0])
     else:
+        print(args)
         _fail('Too many arguments given. ' + 
                 'Use %s for more information.' % HELP_FLAG)
     
