@@ -1,7 +1,11 @@
-'''
-
-
-'''
+"""
+    vault.py
+    ~~~~~~~~
+    
+    Encrypts and decrypts files.
+    
+    :author: dpendergast
+"""
 
 from cryptography.fernet import Fernet
 
@@ -13,7 +17,7 @@ import hashlib
 import json
 import random
 
-'''if true, exceptions are raised on failure instead of exiting.'''
+"""if true, exceptions are raised on failure instead of exiting."""
 TESTING_MODE = False
 
 THIS_FILENAME = None
@@ -24,7 +28,7 @@ OUTPUT_DIRECTORY = 'secret_files'
 INPUT_DIRECTORY = 'plain_files'
     
 def encrypt():
-    '''encryption command sequence'''
+    """encryption command sequence"""
     _verify_initted()
     targets = _get_targets_for_encryption()
     _ask_for_user_confirm_on_targets(targets, 'encrypt')
@@ -33,7 +37,7 @@ def encrypt():
     do_encryption(targets, password)
     
 def decrypt():
-    '''decryption command sequence'''
+    """decryption command sequence"""
     _verify_initted()
     targets = _get_targets_for_decryption()
     _ask_for_user_confirm_on_targets(targets, 'decrypt')
@@ -42,7 +46,7 @@ def decrypt():
     do_decryption(targets, password)
     
 def status():
-    '''status command sequence'''
+    """status command sequence"""
     encrypt_targets = _get_targets_for_encryption()
     decrypt_targets = _get_targets_for_decryption()
      
@@ -53,9 +57,9 @@ def status():
     print('\nThere are %d files to decrypt:' % len(decrypt_targets))
     if len(decrypt_targets) > 0:
         print('\n'.join(['\t' + x for x in decrypt_targets]))
-     
+    
 def init():
-    '''init command sequence'''
+    """init command sequence"""
     if _is_initted():
         _fail('vault is already initialized in this directory.')
     
@@ -85,7 +89,7 @@ def init():
     print('Vault successfully initialized.')
      
 def help():
-    '''--help command sequence'''
+    """--help command sequence"""
     print('called help')
     
 def do_encryption(targets, password):
@@ -192,7 +196,7 @@ def write_file(file_name, file_contents):
         f.write(file_contents)
                     
 def is_encrypted(target):
-    '''returns true if target filename is already encrypted.'''
+    """returns true if target filename is already encrypted."""
     try:
         with open(target) as data_file:    
             data = json.load(data_file)
@@ -239,8 +243,6 @@ def _password_matches_initialization(password):
             return expected_hash == given_hash
     except EnvironmentError:
         _fail('Error while accessing %d' % DATA_FILENAME)
-    
-
     
 def _is_initted():
      return os.path.isfile(DATA_FILENAME)
