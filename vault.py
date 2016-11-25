@@ -177,14 +177,18 @@ def do_decryption(targets, password):
                 with open(target, 'r') as data_file:    
                     json_blob = json.load(data_file)
                     if password_hash != json_blob['pw_hash']:
-                        print('File encrypted with different initialization: %s' % target)
+                        raise Exception('File encrypted with different password: %s' % target)
+                    
                     crypto_data = json_blob['crypto_data'] 
+                    
                     print('decrypting %s...' % target)
                     raw_data = _decrypt_data(crypto_data, password)
                     file_name = raw_data['file_name']
                     file_contents = raw_data['file_contents']
+                    
                     as_bytes = bytes(file_contents)
                     write_file(file_name, as_bytes)
+                    
                     created_files.append(file_name)
                 
                 os.remove(target)
@@ -216,6 +220,12 @@ def _encrypt_data(json_data, password):
     return crypto_data
     
 def write_file(file_name, file_contents):
+    try:
+        dir_path = os.path.dirname(file_name)
+        os.makedirs(dir_path)
+    except Exception:
+        pass # probably the directory just already exists.
+        
     with open(file_name,'wb') as f:
         f.write(file_contents)
                     
