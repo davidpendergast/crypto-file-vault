@@ -1,3 +1,8 @@
+'''
+
+
+'''
+
 from cryptography.fernet import Fernet
 
 import sys
@@ -15,21 +20,91 @@ THIS_FILENAME = None
 HELP_FLAG = '--help'
 
 DATA_FILENAME = 'vaultdata.json'
+OUTPUT_DIRECTORY = 'secret_files'
+INPUT_DIRECTORY = 'plain_files'
 
 PROTECTED = ['.*vault\.py', '.*vaultdata\.json', '.*README.txt', '.*\.git.*']
     
-def encrypt(args):
-    targets, password = _verify_targets_and_password(args, 'encrypt')
+def encrypt():
+    '''encryption command sequence'''
+    _verify_initted()
+    targets = _get_targets_for_encryption()
+    _ask_for_user_confirm_on_targets(targets, 'encrypt')
+    password = _ask_for_password()
+    
     do_encryption(targets, password)
+    
+def decrypt():
+    '''decryption command sequence'''
+    _verify_initted()
+    targets = _get_targets_for_decryption()
+    _ask_for_user_confirm_on_targets(targets, 'decrypt')
+    password = _ask_for_password()
+    
+    do_decryption(targets, password)
+    
+def status():
+    '''status command sequence'''
+    encrypt_targets = _get_targets_for_encryption()
+    decrypt_targets = _get_targets_for_decryption()
+     
+    print('\nThere are %d files to encrypt:' % len(encrypt_targets))
+    if len(encrypt_targets) > 0:
+        print('\n'.join(['\t' + x for x in encrypt_targets]))
+    
+    print('\nThere are %d files to decrypt:' % len(decrypt_targets))
+    if len(decrypt_targets) > 0:
+        print('\n'.join(['\t' + x for x in decrypt_targets]))
+     
+def init():
+    '''init command sequence'''
+    if _is_initted():
+        _fail('vault is already initialized in this directory.')
+    
+    print('Choose a password:')
+    
+    password = ''
+    while True:
+        password = getpass.getpass('Password: ')
+        password_confirm = getpass.getpass('Confirm password: ')
+        if _new_password_is_valid(password, password_confirm):
+            break
+            
+    pw_hash = _hash(password)
+    json_blob = {
+        'pw_hash':pw_hash
+    }
+    
+    print('Creating %s...' % DATA_FILENAME)
+    with open(DATA_FILENAME, 'w') as outfile:
+        json.dump(json_blob, outfile)
+        
+    print('Creating %s...' % OUTPUT_DIRECTORY)
+    _make_dir_if_necessary(OUTPUT_DIRECTORY)
+    print('Creating %s...' % INPUT_DIRECTORY)
+    _make_dir_if_necessary(INPUT_DIRECTORY)
+    
+    print('Vault successfully initialized.')
+     
+def help():
+    '''--help command sequence'''
+    print('called help')
     
 def do_encryption(targets, password):
     password_hash = _hash(password)
+    _make_dir_if_necessary(OUTPUT_DIRECTORY)
+    created_files = []
+    removed_files = []
+    unaffected_files = []
+    
     for target in targets:
         if is_encrypted(target):
             print('Skipping already encrypted file: %s' % target)
+            unaffected_files.append(target)
         else:
             try:
                 with open(target, 'rb') as data_file:
+                    print('encrypting %s...' % target)
                     raw_data = data_file.read()
                     as_ints = [int(x) for x in raw_data]
                     json_blob = {
@@ -42,23 +117,41 @@ def do_encryption(targets, password):
                         'crypto_data':crypto_data
                     }
                     #TODO make this safe
-                    filename = 'secret'+str(random.randint(0,999999999))+'.json'
-                    with open(filename, 'w') as out_file:
+                    filename = 'secret'+str(random.randint(0, 999999999))+'.json'
+                    full_name = os.path.join(OUTPUT_DIRECTORY, filename)
+                    with open(full_name, 'w') as out_file:
                         json.dump(actual_json, out_file, indent=4)
-            
+                    created_files.append(full_name)
+                
+                os.remove(target)
+                removed_files.append(target)
+                
             except Exception as e:
                 print('Exception thrown while encrypting file: %s' % target)
-                raise e
+                unaffected_files.append(target)
+                
+    print('\nRemoved %d files:' % len(removed_files))
+    print('\n'.join(['\t' + x for x in removed_files]))
+    print('\nCreated %d files:' % len(created_files))
+    print('\n'.join(['\t' + x for x in created_files]))
+    if len(unaffected_files) > 0:
+        print('\n%d files unaffected:' % len(unaffected_files))
+        print('\n'.join(['\t' + x for x in unaffected_files]))
 
-def decrypt(args):
-    targets, password = _verify_targets_and_password(args, 'decrypt')
-    do_decryption(targets, password)
+def _make_dir_if_necessary(directory_name):
+    if not os.path.exists(directory_name):
+        os.makedirs(directory_name)
     
 def do_decryption(targets, password):
     password_hash = _hash(password)
+    created_files = []
+    removed_files = []
+    unaffected_files = []
+    
     for target in targets:
         if not is_encrypted(target):
             print('Skipping non-encrypted file: %s' % target)
+            unaffected_files.append(target)
         else:
             try:
                 with open(target, 'r') as data_file:    
@@ -66,19 +159,20 @@ def do_decryption(targets, password):
                     if password_hash != json_blob['pw_hash']:
                         print('File encrypted with different initialization: %s' % target)
                     crypto_data = json_blob['crypto_data'] 
-                    print('Decrypting %s...' % target)
+                    print('decrypting %s...' % target)
                     raw_data = _decrypt_data(crypto_data, password)
-                    print(raw_data)
                     file_name = raw_data['file_name']
                     file_contents = raw_data['file_contents']
                     as_bytes = bytes(file_contents)
                     write_file(file_name, as_bytes)
+                    created_files.append(file_name)
                 
                 os.remove(target)
-                    
+                removed_files.append(target)
             except Exception as e:
                 print('Exception thrown while reading file: %s' % target)
                 print(e)
+                unaffected_files.append(target)
               
 def _decrypt_data(crypto_data, password):
     # TODO - crypto_data -> json string
@@ -104,12 +198,20 @@ def is_encrypted(target):
     except:
         return False
     
-def _verify_targets_and_password(args, action):
+def _get_targets_for_encryption():
+    targets = _get_targets(INPUT_DIRECTORY)
+    return [x for x in targets if not is_encrypted(x)]
+    
+def _get_targets_for_decryption():
+    targets = _get_targets(OUTPUT_DIRECTORY)
+    return [x for x in targets if is_encrypted(x)]
+    
+def _verify_initted():
     if not _is_initted():
         _fail('vault must be initted in this directory before proceeding.' + 
                 '\n\n\tuse python vault.py init')
-    targets = _get_targets(args)
-    _verify_targets(targets, action)
+    
+def _ask_for_password():
     password = getpass.getpass()
     while True:
         if _password_matches_initialization(password):
@@ -117,7 +219,8 @@ def _verify_targets_and_password(args, action):
         else:
             print('incorrect password.')
             password = getpass.getpass()
-    return (targets, password)
+    return password
+    
     
 def _hash(pw):
     hashGen = hashlib.sha512()
@@ -135,27 +238,7 @@ def _password_matches_initialization(password):
     except EnvironmentError:
         _fail('Error while accessing %d' % DATA_FILENAME)
     
-def init(args):
-    if _is_initted():
-        _fail('vault is already initialized in this directory.')
-    
-    print('Enter a new encrypt/decrypt password twice:')
-    
-    password = ''
-    while True:
-        password = getpass.getpass('Password: ')
-        password_confirm = getpass.getpass('Confirm password: ')
-        if _new_password_is_valid(password, password_confirm):
-            break
-            
-    pw_hash = _hash(password)
-    json_blob = {
-        'pw_hash':pw_hash
-    }
-    
-    print('Creating %s...' % DATA_FILENAME)
-    with open(DATA_FILENAME, 'w') as outfile:
-        json.dump(json_blob, outfile)
+
     
 def _is_initted():
      return os.path.isfile(DATA_FILENAME)
@@ -168,11 +251,8 @@ def _new_password_is_valid(password, password_confirm):
         print('Password must not be empty!')
         return False
     return True
-
-def help(args):
-    print('called help')
     
-def _verify_targets(targets, action):
+def _ask_for_user_confirm_on_targets(targets, action):
     """asks the user to user to verify targeted files are correct."""
     if len(targets) == 0:
         _fail('There is nothing to encrypt/decrypt.')
@@ -186,26 +266,15 @@ def _verify_targets(targets, action):
         if answer != 'y':
             _fail('User cancelled procedure.')       
     
-def _get_targets(args):
+def _get_targets(local_path):
     '''returns a list of filenames'''
-    targets = []
-    if len(args) == 0:
-        target = os.path.dirname(os.path.realpath(__file__))
-        targets = _get_nested_files_in_directory(target)
-    elif len(args) == 1:
-        if os.path.exists(args[0]):
-            if os.path.isfile(args[0]):
-                targets = list(args[0])
-            else:
-                targets = _get_nested_files_in_directory(args[0])
-        else:
-            _fail('Cannot access %s: No such file or directory.' % args[0])
-    else:
-        print(args)
-        _fail('Too many arguments given. ' + 
-                'Use %s for more information.' % HELP_FLAG)
     
-    return _filter_protected(targets)
+    print(local_path)
+    if os.path.exists(local_path):
+        targets = _get_nested_files_in_directory(local_path)
+        return _filter_protected(targets)
+    else:
+        _fail('Cannot access %s: No such file or directory.' % local_path)
     
 def _filter_protected(targets):
     regex = '|'.join([x + '\Z' for x in PROTECTED])
@@ -222,7 +291,7 @@ def _get_nested_files_in_directory(rootdir):
     
 def _fail(message):
     if TESTING_MODE:
-        raise Exception()
+        raise Exception(message)
     else:
         print(message)
         sys.exit()
@@ -230,20 +299,23 @@ def _fail(message):
 COMMANDS = {
     'encrypt': encrypt,
     'decrypt': decrypt,
-    'init' : init,
+    'init':    init,
+    'status':  status,
     HELP_FLAG: help
 }
 
 if __name__ == '__main__':
     args = list(sys.argv)
-    if len(args) < 2:
-        _fail('Not enough arguments given. ' + 
-                'Use %s for more information.' % HELP_FLAG)
-    THIS_FILE_NAME = args.pop(0)
-    command = args.pop(0)
+    if len(args) != 2:
+        problem = 'Too many' if len(args) > 2 else 'Not enough'
+        _fail('%s arguments given. ' + 
+                'Use %s for more information.' % (problem, HELP_FLAG))
+    
+    THIS_FILE_NAME = args[0]
+    command = args[1]
 
     if command in COMMANDS:
-        COMMANDS[command](args)
+        COMMANDS[command]()
     else:
         _fail('Unrecognized command: %s' % command)
         
