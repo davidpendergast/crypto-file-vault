@@ -16,6 +16,8 @@ import getpass
 import hashlib
 import json
 import random
+import string
+import base64
 
 """if true, exceptions are raised on failure instead of exiting."""
 TESTING_MODE = False
@@ -125,10 +127,13 @@ def do_encryption(targets, password):
                         'file_name':target,
                         'file_contents':as_ints
                     }
-                    crypto_data = _encrypt_data(json_blob, password)
+                    json_string = json.dumps(json_blob) 
+                    as_bytes = bytes(json_string, 'utf-8')
+                    crypto_bytes = _encrypt_data(as_bytes, password)
+                    crypto_string = crypto_bytes.decode('utf-8')
                     actual_json = {
                         'pw_hash':password_hash,
-                        'crypto_data':crypto_data
+                        'crypto_data':crypto_string
                     }
                     
                     filename = filenames.pop()
@@ -143,6 +148,7 @@ def do_encryption(targets, password):
                 
             except Exception as e:
                 print('Exception thrown while encrypting file: %s' % target)
+                print(e)
                 unaffected_files.append(target)
                 
     _display_summary(created_files, removed_files, unaffected_files)
@@ -179,12 +185,15 @@ def do_decryption(targets, password):
                     if password_hash != json_blob['pw_hash']:
                         raise Exception('File encrypted with different password: %s' % target)
                     
-                    crypto_data = json_blob['crypto_data'] 
-                    
+                    crypto_string = json_blob['crypto_data'] 
+                    crypto_bytes = bytes(crypto_string, 'utf-8')
                     print('decrypting %s...' % target)
-                    raw_data = _decrypt_data(crypto_data, password)
-                    file_name = raw_data['file_name']
-                    file_contents = raw_data['file_contents']
+                    
+                    raw_bytes = _decrypt_data(crypto_bytes, password)
+                    json_string = raw_bytes.decode('utf-8')
+                    json_blob = json.loads(json_string)
+                    file_name = json_blob['file_name']
+                    file_contents = json_blob['file_contents']
                     
                     as_bytes = bytes(file_contents)
                     write_file(file_name, as_bytes)
@@ -208,16 +217,26 @@ def _display_summary(created_files, removed_files, unaffected_files):
         print('\n%d files unaffected:' % len(unaffected_files))
         print('\n'.join(['\t' + x for x in unaffected_files]))
      
+def _encrypt_data(raw_data, password):
+    key = _password_to_key(password)
+    f = Fernet(key)
+    crypto_bytes = f.encrypt(raw_data)
+    return crypto_bytes
+     
 def _decrypt_data(crypto_data, password):
-    # TODO - crypto_data -> json string
-    json_string = crypto_data
-    return json.loads(json_string)
+    key = _password_to_key(password)
+    f = Fernet(key)
+    token = f.decrypt(crypto_data)
+    return token
     
-def _encrypt_data(json_data, password):
-    json_string = json.dumps(json_data) 
-    # TODO - json_string -> crypto_data
-    crypto_data = json_string
-    return crypto_data
+def _password_to_key(password):
+    char_pool = string.ascii_uppercase + string.ascii_lowercase
+    char_pool +=  string.digits + '-'
+    
+    random.seed(password)
+    key_str = ''.join([random.choice(char_pool) for _ in range(0, 43)]) + '='
+    key = bytes(key_str, 'utf-8')
+    return key
     
 def write_file(file_name, file_contents):
     try:
@@ -248,7 +267,7 @@ def _get_targets_for_decryption():
     
 def _verify_initted():
     if not _is_initted():
-        _fail('vault must be initted in this directory before proceeding.' + 
+        _fail('vault must be initialized in this directory before proceeding.' + 
                 '\n\n\tuse python vault.py init')
     
 def _ask_for_password():

@@ -1,3 +1,4 @@
 vaultdata.json
 plain_files/
 secret_files/
+__pycache__/
