@@ -8,6 +8,7 @@
 """
 
 from cryptography.fernet import Fernet
+from builtins import bytes
 
 import sys
 import os.path
@@ -18,6 +19,7 @@ import json
 import random
 import string
 import base64
+import uuid
 
 """if true, exceptions are raised on failure instead of exiting."""
 TESTING_MODE = False
@@ -25,6 +27,8 @@ TESTING_MODE = False
 DATA_FILENAME = 'vaultdata.json'
 OUTPUT_DIRECTORY = 'secret_files'
 INPUT_DIRECTORY = 'plain_files'
+
+PYTHON_2 = sys.version_info[0] < 3 
     
     
 def encrypt():
@@ -34,7 +38,7 @@ def encrypt():
     _ask_for_user_confirm_on_targets(targets, 'encrypt')
     password = _ask_for_password()
     
-    do_encryption(targets, password)
+    _do_encryption(targets, password)
     
     
 def decrypt():
@@ -44,7 +48,7 @@ def decrypt():
     _ask_for_user_confirm_on_targets(targets, 'decrypt')
     password = _ask_for_password()
     
-    do_decryption(targets, password)
+    _do_decryption(targets, password)
     
     
 def status():
@@ -107,7 +111,7 @@ def help():
     print('\n'.join(text))
     
     
-def do_encryption(targets, password):
+def _do_encryption(targets, password):
     """encrypts a list of filenames using a password"""
     password_hash = _hash(password)
     _make_dir_if_necessary(OUTPUT_DIRECTORY)
@@ -133,7 +137,7 @@ def do_encryption(targets, password):
                     }
                     json_string = json.dumps(json_blob) 
                     as_bytes = bytes(json_string, 'utf-8')
-                    crypto_bytes = _encrypt_data(as_bytes, password)
+                    crypto_bytes = _encrypt_bytes(as_bytes, password)
                     crypto_string = crypto_bytes.decode('utf-8')
                     actual_json = {
                         'pw_hash':password_hash,
@@ -158,7 +162,7 @@ def do_encryption(targets, password):
     _display_summary(created_files, removed_files, unaffected_files)
     
     
-def do_decryption(targets, password):
+def _do_decryption(targets, password):
     """decrypts a list of filenames using a password"""
     password_hash = _hash(password)
     created_files = []
@@ -181,7 +185,7 @@ def do_decryption(targets, password):
                     crypto_bytes = bytes(crypto_string, 'utf-8')
                     print('decrypting %s...' % target)
                     
-                    raw_bytes = _decrypt_data(crypto_bytes, password)
+                    raw_bytes = _decrypt_bytes(crypto_bytes, password)
                     json_string = raw_bytes.decode('utf-8')
                     json_blob = json.loads(json_string)
                     file_name = json_blob['file_name']
@@ -201,7 +205,7 @@ def do_decryption(targets, password):
     _display_summary(created_files, removed_files, unaffected_files)
     
     
-def _encrypt_data(raw_data, password):
+def _encrypt_bytes(raw_data, password):
     """takes a byte array, encrypts it using a symmetric key generated
         from the given password and returns the resultant byte array.
     """
@@ -211,7 +215,7 @@ def _encrypt_data(raw_data, password):
     return crypto_bytes
      
      
-def _decrypt_data(crypto_data, password):
+def _decrypt_bytes(crypto_data, password):
     """takes an encrypted byte array, decrypts it using a symmetric key 
         generated from the given password and returns the resultant byte array.
     """
@@ -248,14 +252,23 @@ def _make_dir_if_necessary(directory_name):
         os.makedirs(directory_name)  
     
     
-def _password_to_key(password):
-    char_pool = string.ascii_uppercase + string.ascii_lowercase
-    char_pool +=  string.digits + '-'
+def _password_to_key(password, salt):
+    hex_string = hashlib.sha256(salt.encode() + password.encode()).hexdigest()
+    return bytes(hex_string, 'utf-8')
+ 
     
-    random.seed(password)
-    key_str = ''.join([random.choice(char_pool) for _ in range(0, 43)]) + '='
-    key = bytes(key_str, 'utf-8')
-    return key
+def _string_to_int(password, modulo=2**32):
+    """hashing function for strings that's stable across all platforms and 
+        python versions.
+    """
+    total = 0
+    mult = 1
+    mult_factor = 31
+    for char in password:
+        total = (total + mult * ord(char)) % modulo
+        mult = (mult * mult_factor) % modulo
+        
+    return total
     
     
 def write_file(file_name, file_contents):
@@ -337,7 +350,11 @@ def _ask_for_user_confirm_on_targets(targets, action):
         print('\n'.join(['\t' + x for x in targets]) + '\n')
         answer = ''
         while answer != 'y' and answer != 'n':
-            answer = input('%s %d files? (y/n): ' % (action, len(targets)))
+            question = '%s %d files? (y/n): ' % (action, len(targets))
+            if PYTHON_2:
+                answer = raw_input(question)
+            else:
+                answer = input(question)
         
         if answer != 'y':
             _fail('User cancelled procedure.')    
@@ -383,8 +400,8 @@ COMMANDS = {
     '--help':  help
 }
 
-if sys.version_info[0] < 3:
-    raise 'Must be using python 3'
+# if sys.version_info[0] < 3:
+#    raise 'Must be using python 3'
 
 if __name__ == '__main__':
     args = list(sys.argv)

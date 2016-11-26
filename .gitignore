@@ -2,3 +2,5 @@ vaultdata.json
 plain_files/
 secret_files/
 __pycache__/
+.cache
+*.pyc
