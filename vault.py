@@ -28,7 +28,7 @@ DATA_FILENAME = 'vaultdata.json'
 OUTPUT_DIRECTORY = 'secret_files'
 INPUT_DIRECTORY = 'plain_files'
 
-PYTHON_2 = sys.version_info[0] < 3 
+PYTHON_2 = sys.version_info[0] < 3
     
     
 def encrypt():
@@ -37,8 +37,8 @@ def encrypt():
     targets = _get_targets_for_encryption()
     _ask_for_user_confirm_on_targets(targets, 'encrypt')
     password = _ask_for_password()
-    
-    _do_encryption(targets, password)
+    salt = _get_salt()
+    _do_encryption(targets, password, salt)
     
     
 def decrypt():
@@ -47,8 +47,9 @@ def decrypt():
     targets = _get_targets_for_decryption()
     _ask_for_user_confirm_on_targets(targets, 'decrypt')
     password = _ask_for_password()
+    salt = _get_salt()
     
-    _do_decryption(targets, password)
+    _do_decryption(targets, password, salt)
     
     
 def status():
@@ -79,9 +80,13 @@ def init():
         if _new_password_is_valid(password, password_confirm):
             break
             
-    pw_hash = _hash(password)
+    salt = _generate_salt()
+    salted_password = _add_salt(password, salt)
+    pw_hash = _hash(salted_password)
+    
     json_blob = {
-        'pw_hash':pw_hash
+        'pw_hash':pw_hash,
+        'salt':salt
     }
     
     print('Creating %s...' % DATA_FILENAME)
@@ -111,9 +116,10 @@ def help():
     print('\n'.join(text))
     
     
-def _do_encryption(targets, password):
+def _do_encryption(targets, password, salt):
     """encrypts a list of filenames using a password"""
-    password_hash = _hash(password)
+    salted_password = _add_salt(password, salt)
+    password_hash = _hash(salted_password)
     _make_dir_if_necessary(OUTPUT_DIRECTORY)
     created_files = []
     removed_files = []
@@ -137,10 +143,11 @@ def _do_encryption(targets, password):
                     }
                     json_string = json.dumps(json_blob) 
                     as_bytes = bytes(json_string, 'utf-8')
-                    crypto_bytes = _encrypt_bytes(as_bytes, password)
+                    crypto_bytes = _encrypt_bytes(as_bytes, salted_password)
                     crypto_string = crypto_bytes.decode('utf-8')
                     actual_json = {
                         'pw_hash':password_hash,
+                        'salt':salt,
                         'crypto_data':crypto_string
                     }
                     
@@ -162,9 +169,10 @@ def _do_encryption(targets, password):
     _display_summary(created_files, removed_files, unaffected_files)
     
     
-def _do_decryption(targets, password):
+def _do_decryption(targets, password, salt):
     """decrypts a list of filenames using a password"""
-    password_hash = _hash(password)
+    salted_password = _add_salt(password, salt)
+    password_hash = _hash(salted_password)
     created_files = []
     removed_files = []
     unaffected_files = []
@@ -185,7 +193,7 @@ def _do_decryption(targets, password):
                     crypto_bytes = bytes(crypto_string, 'utf-8')
                     print('decrypting %s...' % target)
                     
-                    raw_bytes = _decrypt_bytes(crypto_bytes, password)
+                    raw_bytes = _decrypt_bytes(crypto_bytes, salted_password)
                     json_string = raw_bytes.decode('utf-8')
                     json_blob = json.loads(json_string)
                     file_name = json_blob['file_name']
@@ -205,25 +213,27 @@ def _do_decryption(targets, password):
     _display_summary(created_files, removed_files, unaffected_files)
     
     
-def _encrypt_bytes(raw_data, password):
+def _encrypt_bytes(raw_data, salted_password):
     """takes a byte array, encrypts it using a symmetric key generated
         from the given password and returns the resultant byte array.
     """
-    key = _password_to_key(password)
+    key = _password_to_fernet_key(salted_password)
     f = Fernet(key)
     crypto_bytes = f.encrypt(raw_data)
     return crypto_bytes
      
      
-def _decrypt_bytes(crypto_data, password):
+def _decrypt_bytes(crypto_data, salted_password):
     """takes an encrypted byte array, decrypts it using a symmetric key 
         generated from the given password and returns the resultant byte array.
     """
-    key = _password_to_key(password)
+    key = _password_to_fernet_key(salted_password)
     f = Fernet(key)
     token = f.decrypt(crypto_data)
     return token
 
+def _add_salt(password, salt):
+    return password + salt
 
 def _display_summary(created_files, removed_files, unaffected_files):
     print('\nCreated %d files:' % len(created_files))
@@ -252,9 +262,12 @@ def _make_dir_if_necessary(directory_name):
         os.makedirs(directory_name)  
     
     
-def _password_to_key(password, salt):
-    hex_string = hashlib.sha256(salt.encode() + password.encode()).hexdigest()
-    return bytes(hex_string, 'utf-8')
+def _password_to_fernet_key(salted_password):
+    hex_string = hashlib.sha256(salted_password.encode()).hexdigest()[0:32]
+    print('len=%d, str=%s' % (len(hex_string), hex_string))
+    res = bytes(hex_string, 'utf-8')
+    print('len=%d, bytes=%s' % (len(res), res))
+    return res
  
     
 def _string_to_int(password, modulo=2**32):
@@ -309,23 +322,40 @@ def _ask_for_password():
     return password
     
     
-def _hash(pw):
+def _hash(salted_password):
     hashGen = hashlib.sha512()
-    pw = pw.encode('utf-8')
+    pw = salted_password.encode('utf-8')
     hashGen.update(pw)
     return hashGen.hexdigest()
+    
+    
+def _generate_salt():
+    return uuid.uuid4().hex
     
     
 def _password_matches_initialization(password):
     try:
         with open(DATA_FILENAME) as data_file:    
             data = json.load(data_file)
+            salt = data['salt']
             expected_hash = data['pw_hash']
-            given_hash = _hash(password)
+            salted_password = _add_salt(password, salt)
+            given_hash = _hash(salted_password)
             return expected_hash == given_hash
-    except EnvironmentError:
+    except Exception as e:
+        print(e)
         _fail('Error while accessing %d' % DATA_FILENAME)
+        
     
+def _get_salt():
+    try:
+        with open(DATA_FILENAME) as data_file:    
+            data = json.load(data_file)
+            return data['salt']
+    except Exception as e:
+        print(e)
+        _fail('Error while accessing %d' % DATA_FILENAME)
+        
     
 def _is_initted():
      return os.path.isfile(DATA_FILENAME)
