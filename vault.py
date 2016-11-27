@@ -21,9 +21,6 @@ import string
 import base64
 import uuid
 
-"""if true, exceptions are raised on failure instead of exiting."""
-TESTING_MODE = False
-
 DATA_FILENAME = 'vaultdata.json'
 OUTPUT_DIRECTORY = 'secret_files'
 INPUT_DIRECTORY = 'plain_files'
@@ -136,7 +133,10 @@ def _do_encryption(targets, password, salt):
                 with open(target, 'rb') as data_file:
                     print('encrypting %s...' % target)
                     raw_data = data_file.read()
-                    as_ints = [ord(x) for x in raw_data]
+                    if PYTHON_2:
+                        as_ints = [ord(x) for x in raw_data]
+                    else:
+                        as_ints = [int(x) for x in raw_data]
                     json_blob = {
                         'file_name':target,
                         'file_contents':as_ints
@@ -164,7 +164,6 @@ def _do_encryption(targets, password, salt):
             except Exception as e:
                 print('Exception thrown while encrypting file: %s' % target)
                 print(e)
-                raise e
                 unaffected_files.append(target)
                 
     _display_summary(created_files, removed_files, unaffected_files)
@@ -211,6 +210,7 @@ def _do_decryption(targets, password, salt):
                 print('Exception thrown while reading file: %s' % target)
                 print(e)
                 unaffected_files.append(target)
+    
     _display_summary(created_files, removed_files, unaffected_files)
     
     
@@ -380,14 +380,16 @@ def _ask_for_user_confirm_on_targets(targets, action):
         answer = ''
         while answer != 'y' and answer != 'n':
             question = '%s %d files? (y/n): ' % (action, len(targets))
-            if PYTHON_2:
-                answer = raw_input(question)
-            else:
-                answer = input(question)
+            answer = _get_user_input(question)
         
         if answer != 'y':
             _fail('User cancelled procedure.')    
     
+def _get_user_input(question):
+    if PYTHON_2:
+        return raw_input(question)
+    else:
+        return input(question)
     
 def _get_targets_for_encryption():
     targets = _get_targets(INPUT_DIRECTORY)
@@ -415,11 +417,9 @@ def _get_nested_files_in_directory(rootdir):
     
     
 def _fail(message):
-    if TESTING_MODE:
-        raise Exception(message)
-    else:
         print(message)
         sys.exit()
+        
     
 COMMANDS = {
     'encrypt': encrypt,
@@ -428,9 +428,6 @@ COMMANDS = {
     'status':  status,
     '--help':  help
 }
-
-# if sys.version_info[0] < 3:
-#    raise 'Must be using python 3'
 
 if __name__ == '__main__':
     args = list(sys.argv)

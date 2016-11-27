@@ -13,19 +13,16 @@ TEST_CASES = [
     (b'', '')
 ]
 
-def setup_module():
-    print ("setup           class:TestBasicStuff")
+def test_setup_module():
     for _ in range(0, 100):
         data_length = random.randint(0,10000)
         pw_length = random.randint(1, 100)
         data = _get_random_byte_array(data_length)
         pw = _get_random_string(pw_length)
-        # print('adding (%s, %s) to testcases' % (data, pw))
         TEST_CASES.append((data, pw))
         
 def test_encrypt_and_decrypt_bytes():
     for (data, password) in TEST_CASES:
-        print('running (%s, %s)' % (data, password))
         crypto_bytes = vault._encrypt_bytes(data, password)
         back_to_raw = vault._decrypt_bytes(crypto_bytes, password)
         
@@ -36,7 +33,4 @@ def _get_random_byte_array(length):
 
 def _get_random_string(length):
     char_pool = [chr(x) for x in range(32, 128)]
-    return ''.join([random.choice(char_pool) for _ in range(0, length)])
-    
-setup_module()
-    
+    return ''.join([random.choice(char_pool) for _ in range(0, length)])    
