@@ -136,7 +136,7 @@ def _do_encryption(targets, password, salt):
                 with open(target, 'rb') as data_file:
                     print('encrypting %s...' % target)
                     raw_data = data_file.read()
-                    as_ints = [int(x) for x in raw_data]
+                    as_ints = [ord(x) for x in raw_data]
                     json_blob = {
                         'file_name':target,
                         'file_contents':as_ints
@@ -164,6 +164,7 @@ def _do_encryption(targets, password, salt):
             except Exception as e:
                 print('Exception thrown while encrypting file: %s' % target)
                 print(e)
+                raise e
                 unaffected_files.append(target)
                 
     _display_summary(created_files, removed_files, unaffected_files)
@@ -263,10 +264,8 @@ def _make_dir_if_necessary(directory_name):
     
     
 def _password_to_fernet_key(salted_password):
-    hex_string = hashlib.sha256(salted_password.encode()).hexdigest()[0:32]
-    print('len=%d, str=%s' % (len(hex_string), hex_string))
+    hex_string = hashlib.sha256(salted_password.encode()).hexdigest()[0:43]+'='
     res = bytes(hex_string, 'utf-8')
-    print('len=%d, bytes=%s' % (len(res), res))
     return res
  
     

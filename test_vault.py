@@ -3,15 +3,9 @@ from cryptography.fernet import Fernet
 import unittest
 import random
 import string
+import hashlib
 
 import vault
-
-print('doing test')
-
-print(vault._password_to_key('pw', 'salt'))
-
-def test_thing():
-    assert 4 == 5
 
 TEST_CASES = [
     (b'simple string', 'simplepassword'),
@@ -43,4 +37,6 @@ def _get_random_byte_array(length):
 def _get_random_string(length):
     char_pool = [chr(x) for x in range(32, 128)]
     return ''.join([random.choice(char_pool) for _ in range(0, length)])
+    
+setup_module()
     
