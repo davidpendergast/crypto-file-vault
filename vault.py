@@ -165,7 +165,10 @@ def _do_encryption(targets, password, salt):
                 print('Exception thrown while encrypting file: %s' % target)
                 print(e)
                 unaffected_files.append(target)
-                
+    
+    if len(unaffected_files) == 0:
+        _remove_inner_empty_directories(INPUT_DIRECTORY)   
+                 
     _display_summary(created_files, removed_files, unaffected_files)
     
     
@@ -254,8 +257,23 @@ def _get_unique_filenames(n, filetype, for_directory):
         hex_str = hex(rand_num)
         name = hex_str[2:] + filetype
         if name not in dir_files:
+            dir_files.add(name)
             filenames.append(name)
     return filenames
+    
+
+def _remove_inner_empty_directories(path):
+    inner_items = os.listdir(path)
+    if inner_items == []:
+        return
+    else:
+        for item in inner_items:
+            item = os.path.join(path, item)
+            if os.path.isdir(item):
+                _remove_inner_empty_directories(item)
+                if os.listdir(item) == []:
+                    print('removing: %s' % item)  
+                    os.rmdir(item)             
 
 
 def _make_dir_if_necessary(directory_name):
